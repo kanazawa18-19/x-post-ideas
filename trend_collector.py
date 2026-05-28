@@ -102,6 +102,48 @@ Output a concise bullet-point list in Japanese. Focus on things timely and relev
     return "".join(block.text for block in response.content if hasattr(block, "text"))
 
 
+def collect_precedents(client: anthropic.Anthropic, account: dict) -> str:
+    """世の中の前例・ノウハウ・成功失敗事例を収集する"""
+    keywords_ja = "、".join(account["keywords"][:5])
+    prompt = f"""「{keywords_ja}」に関連する以下を日本語で調査してください：
+- 実際の成功事例・失敗事例（企業名や具体的な話があると尚良い）
+- 知っておくべき定番ノウハウ・ベストプラクティス
+- 「これは使える」「意外と知られていない」系の知見
+
+投稿ネタとして使えそうなものを箇条書きで5〜8個まとめてください。"""
+
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=600,
+        tools=[{"type": "web_search_20250305", "name": "web_search"}],
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return "".join(block.text for block in response.content if hasattr(block, "text"))
+
+
+def collect_x_calendar(client: anthropic.Anthropic, account: dict) -> str:
+    """今日の記念日・業界イベント・季節ネタを収集する"""
+    from datetime import date
+    today = date.today()
+    date_str = today.strftime("%Y年%m月%d日")
+    keywords_ja = "、".join(account["keywords"][:4])
+
+    prompt = f"""今日（{date_str}）に関連する以下を日本語で調査してください：
+1. 今日の記念日・何の日（一般的なもの）
+2. 今週・今月の「{keywords_ja}」に関連する業界イベント・啓発週間・法令施行日など
+3. 季節的に今の時期に刺さるネタ（時季性のある話題）
+
+投稿に絡めやすいものを箇条書きで3〜5個まとめてください。"""
+
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=400,
+        tools=[{"type": "web_search_20250305", "name": "web_search"}],
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return "".join(block.text for block in response.content if hasattr(block, "text"))
+
+
 def collect_trends(client: anthropic.Anthropic, account: dict) -> dict:
     """
     Returns:
@@ -131,6 +173,16 @@ def collect_trends(client: anthropic.Anthropic, account: dict) -> dict:
     if industry:
         content_sections.append(f"【業界・キーワード関連ニュース】\n{industry}")
         source_lines.append("• 業界ニュース：最新情報をweb検索で参照")
+
+    precedents = collect_precedents(client, account)
+    if precedents:
+        content_sections.append(f"【前例・ノウハウ・事例】\n{precedents}")
+        source_lines.append("• 前例・ノウハウ：成功失敗事例・ベストプラクティスを参照")
+
+    calendar = collect_x_calendar(client, account)
+    if calendar:
+        content_sections.append(f"【Xカレンダー（今日の記念日・季節ネタ）】\n{calendar}")
+        source_lines.append("• Xカレンダー：今日の記念日・業界イベント・季節ネタを参照")
 
     return {
         "content": "\n\n".join(content_sections) or "（トレンド情報取得できず）",
