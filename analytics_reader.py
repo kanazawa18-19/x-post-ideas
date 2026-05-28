@@ -14,16 +14,24 @@ def _parse_int(s: str) -> int:
 
 
 def _load_creds(credentials_path: str) -> Credentials:
-    """credentials.jsonを読み込む。private_keyに混入した実改行コードを自動修正する。"""
+    """credentials.jsonを読み込む。private_keyの改行・PEMヘッダー崩れを自動修正する。"""
     text = open(credentials_path).read()
     try:
         info = json.loads(text)
     except json.JSONDecodeError:
-        # private_key内の実際の改行文字をJSONエスケープに変換して再試行
         def fix_pk(m: re.Match) -> str:
             return m.group(1) + m.group(2).replace("\r\n", "\\n").replace("\r", "\\n").replace("\n", "\\n") + '"'
         fixed = re.sub(r'("private_key"\s*:\s*")(.*?)(?<!\\)"', fix_pk, text, flags=re.DOTALL)
         info = json.loads(fixed)
+
+    # PEMヘッダー・フッターに混入した空白・改行を修正
+    # 例: "-----BEGIN PRIVATE\n  KEY-----" → "-----BEGIN PRIVATE KEY-----"
+    if "private_key" in info:
+        pk = info["private_key"]
+        pk = re.sub(r"-----BEGIN\s+PRIVATE\s+KEY-----", "-----BEGIN PRIVATE KEY-----", pk)
+        pk = re.sub(r"-----END\s+PRIVATE\s+KEY-----", "-----END PRIVATE KEY-----", pk)
+        info["private_key"] = pk
+
     return Credentials.from_service_account_info(info, scopes=SCOPES)
 
 
