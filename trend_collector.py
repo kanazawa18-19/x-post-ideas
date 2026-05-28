@@ -1,5 +1,6 @@
 import re
 import json
+import time
 import asyncio
 import anthropic
 from pathlib import Path
@@ -8,6 +9,26 @@ from playwright.async_api import async_playwright
 
 COOKIES_PATH = Path(__file__).parent / "cookies.json"
 X_TRENDS_URL = "https://x.com/explore/tabs/trending"
+_API_INTERVAL = 15  # API呼び出し間隔（秒）
+
+
+def _web_search(client: anthropic.Anthropic, prompt: str, max_tokens: int = 600) -> str:
+    """web_searchツール付きClaude呼び出し。429エラー時は60秒待ってリトライ。"""
+    for attempt in range(3):
+        try:
+            response = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=max_tokens,
+                tools=[{"type": "web_search_20250305", "name": "web_search"}],
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return "".join(block.text for block in response.content if hasattr(block, "text"))
+        except anthropic.RateLimitError:
+            if attempt == 2:
+                return ""
+            print(f"  レートリミット到達、60秒待機してリトライ ({attempt + 1}/3)...")
+            time.sleep(60)
+    return ""
 
 
 async def _scrape_pages(urls_and_labels: list[tuple[str, str]]) -> list[tuple[str, str]]:
@@ -86,86 +107,32 @@ def get_google_trends() -> tuple[list[str], str]:
         return [], ""
 
 
-def collect_industry_news(client: anthropic.Anthropic, account: dict) -> str:
-    keywords_en = " ".join(account["keywords"][:4])
-    keywords_ja = "、".join(account["keywords"][:6])
-    prompt = f"""Search "{keywords_en} Japan news 2026" and summarize in Japanese.
-Find the latest news and hot topics related to [{keywords_ja}] from the past week.
-Output a concise bullet-point list in Japanese. Focus on things timely and relevant for Japanese business professionals."""
-
-    response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=600,
-        tools=[{"type": "web_search_20250305", "name": "web_search"}],
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return "".join(block.text for block in response.content if hasattr(block, "text"))
-
-
-def collect_precedents(client: anthropic.Anthropic, account: dict) -> str:
-    """世の中の前例・ノウハウ・成功失敗事例を収集する"""
-    keywords_ja = "、".join(account["keywords"][:5])
-    prompt = f"""「{keywords_ja}」に関連する以下を日本語で調査してください：
-- 実際の成功事例・失敗事例（企業名や具体的な話があると尚良い）
-- 知っておくべき定番ノウハウ・ベストプラクティス
-- 「これは使える」「意外と知られていない」系の知見
-
-投稿ネタとして使えそうなものを箇条書きで5〜8個まとめてください。"""
-
-    response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=600,
-        tools=[{"type": "web_search_20250305", "name": "web_search"}],
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return "".join(block.text for block in response.content if hasattr(block, "text"))
-
-
-def collect_x_calendar(client: anthropic.Anthropic, account: dict) -> str:
-    """今日の記念日・業界イベント・季節ネタを収集する"""
+def collect_shared_context(client: anthropic.Anthropic) -> str:
+    """全アカウント共通：Xアルゴリズム + 今日の記念日を1回で取得"""
     from datetime import date
     today = date.today()
     date_str = today.strftime("%Y年%m月%d日")
-    keywords_ja = "、".join(account["keywords"][:4])
+    prompt = f"""以下の2点を日本語で調査してください：
 
-    prompt = f"""今日（{date_str}）に関連する以下を日本語で調査してください：
-1. 今日の記念日・何の日（一般的なもの）
-2. 今週・今月の「{keywords_ja}」に関連する業界イベント・啓発週間・法令施行日など
-3. 季節的に今の時期に刺さるネタ（時季性のある話題）
-
-投稿に絡めやすいものを箇条書きで3〜5個まとめてください。"""
-
-    response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=400,
-        tools=[{"type": "web_search_20250305", "name": "web_search"}],
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return "".join(block.text for block in response.content if hasattr(block, "text"))
+1. Search "X Twitter algorithm 2025 2026 reach engagement tips" — Xの最新アルゴリズムで伸びる投稿の特徴を箇条書き5点で
+2. 今日（{date_str}）の記念日・何の日 — 投稿に使えそうなものを箇条書き3点で"""
+    return _web_search(client, prompt, max_tokens=600)
 
 
-def collect_x_algorithm(client: anthropic.Anthropic) -> str:
-    """Xの最新アルゴリズムの傾向を取得する"""
-    prompt = """Search "X Twitter algorithm 2025 2026 how to grow reach engagement" and summarize in Japanese.
-Find the latest information on:
-- What types of posts X algorithm currently favors
-- Best practices for reach and follower growth
-- What to avoid (shadowban, reduced reach)
-- Any recent algorithm changes
+def collect_account_context(client: anthropic.Anthropic, account: dict) -> str:
+    """アカウントごと：業界ニュース + 前例ノウハウを1回で取得"""
+    keywords_en = " ".join(account["keywords"][:4])
+    keywords_ja = "、".join(account["keywords"][:6])
+    prompt = f"""以下の2点を日本語で調査してください：
 
-Output a concise bullet-point list in Japanese."""
-
-    response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=500,
-        tools=[{"type": "web_search_20250305", "name": "web_search"}],
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return "".join(block.text for block in response.content if hasattr(block, "text"))
+1. Search "{keywords_en} Japan news 2026" — 「{keywords_ja}」に関連する直近1週間の最新ニュース・話題を箇条書き5点で
+2. 「{keywords_ja}」の成功失敗事例・定番ノウハウ・意外と知られていない知見を箇条書き5点で"""
+    return _web_search(client, prompt, max_tokens=800)
 
 
-def collect_trends(client: anthropic.Anthropic, account: dict) -> dict:
+def collect_trends(client: anthropic.Anthropic, account: dict, shared_context: str = "") -> dict:
     """
+    shared_context: 全アカウント共通の情報（アルゴリズム+記念日）。初回のみ取得して使い回す。
     Returns:
         content: Claudeに渡す全文
         sources: Slackに表示する参考情報の箇条書き
@@ -173,41 +140,35 @@ def collect_trends(client: anthropic.Anthropic, account: dict) -> dict:
     content_sections = []
     source_lines = []
 
+    # API不使用（Playwright）
     x_raw, x_names = get_x_trends()
     if x_raw:
         content_sections.append(f"【Xリアルタイムトレンド】\n{x_raw[:1500]}")
         if x_names:
             source_lines.append(f"• Xトレンド：{' / '.join(x_names[:8])}")
 
+    # API不使用（pytrends）
     google_list, google_str = get_google_trends()
     if google_str:
         content_sections.append(f"【Googleトレンド（日本）】\n{google_str}")
         source_lines.append(f"• Googleトレンド：{' / '.join(google_list[:5])}")
 
+    # API不使用（Playwright）
     buzz_text, buzz_kws = get_trending_posts(account["keywords"])
     if buzz_text:
         content_sections.append(f"【同ジャンルのバズ投稿（参考）】\n{buzz_text}")
         source_lines.append(f"• バズ投稿参照：「{'」「'.join(buzz_kws)}」の人気投稿")
 
-    industry = collect_industry_news(client, account)
-    if industry:
-        content_sections.append(f"【業界・キーワード関連ニュース】\n{industry}")
-        source_lines.append("• 業界ニュース：最新情報をweb検索で参照")
+    # API呼び出し1回目：業界ニュース + 前例ノウハウ（アカウントごと）
+    account_ctx = collect_account_context(client, account)
+    if account_ctx:
+        content_sections.append(f"【業界ニュース・前例・ノウハウ】\n{account_ctx}")
+        source_lines.append("• 業界ニュース・前例ノウハウ：web検索で参照")
 
-    precedents = collect_precedents(client, account)
-    if precedents:
-        content_sections.append(f"【前例・ノウハウ・事例】\n{precedents}")
-        source_lines.append("• 前例・ノウハウ：成功失敗事例・ベストプラクティスを参照")
-
-    calendar = collect_x_calendar(client, account)
-    if calendar:
-        content_sections.append(f"【Xカレンダー（今日の記念日・季節ネタ）】\n{calendar}")
-        source_lines.append("• Xカレンダー：今日の記念日・業界イベント・季節ネタを参照")
-
-    algorithm = collect_x_algorithm(client)
-    if algorithm:
-        content_sections.append(f"【Xの最新アルゴリズム傾向】\n{algorithm}")
-        source_lines.append("• Xアルゴリズム：最新の拡散・リーチ傾向を参照")
+    # 共通コンテキスト（アルゴリズム + 記念日）を追加
+    if shared_context:
+        content_sections.append(f"【Xアルゴリズム・今日の記念日】\n{shared_context}")
+        source_lines.append("• Xアルゴリズム・今日の記念日：web検索で参照")
 
     return {
         "content": "\n\n".join(content_sections) or "（トレンド情報取得できず）",
