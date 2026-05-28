@@ -1,3 +1,4 @@
+import re
 import json
 import asyncio
 import anthropic
@@ -10,7 +11,6 @@ X_TRENDS_URL = "https://x.com/explore/tabs/trending"
 
 
 async def _scrape_pages(urls_and_labels: list[tuple[str, str]]) -> list[tuple[str, str]]:
-    """複数URLをまとめてスクレイピング（ブラウザ1回起動で効率化）"""
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
@@ -36,41 +36,57 @@ async def _scrape_pages(urls_and_labels: list[tuple[str, str]]) -> list[tuple[st
         return results
 
 
-def get_x_trends() -> str:
+def _extract_trend_names(raw: str) -> list[str]:
+    """Xトレンドの生テキストからトレンド名を抽出する"""
+    lines = raw.split("\n")
+    names = []
+    for i, line in enumerate(lines):
+        if "トレンド" in line and "·" in line and i + 1 < len(lines):
+            name = lines[i + 1].strip()
+            if name and len(name) < 30 and not name.isdigit() and name not in names:
+                names.append(name)
+    return names[:10]
+
+
+def get_x_trends() -> tuple[str, list[str]]:
+    """(生テキスト, トレンド名リスト)を返す"""
     results = asyncio.run(_scrape_pages([(X_TRENDS_URL, "trends")]))
-    return results[0][1] if results else ""
+    if not results:
+        return "", []
+    raw = results[0][1]
+    return raw, _extract_trend_names(raw)
 
 
-def get_trending_posts(keywords: list[str]) -> str:
-    """X検索のTopタブから主要キーワードのバズ投稿を取得"""
-    # 上位3キーワードで検索
+def get_trending_posts(keywords: list[str]) -> tuple[str, list[str]]:
+    """(生テキスト, 検索したキーワードリスト)を返す"""
+    kws = keywords[:3]
     targets = [
         (f"https://x.com/search?q={quote(kw)}&src=typed_query&f=top", kw)
-        for kw in keywords[:3]
+        for kw in kws
     ]
     results = asyncio.run(_scrape_pages(targets))
     if not results:
-        return ""
+        return "", []
 
     sections = []
     for label, content in results:
         sections.append(f"「{label}」の人気投稿:\n{content[:1200]}")
-    return "\n\n".join(sections)
+    return "\n\n".join(sections), kws
 
 
-def get_google_trends() -> str:
+def get_google_trends() -> tuple[list[str], str]:
+    """(トレンド名リスト, 表示用文字列)を返す"""
     try:
         from pytrends.request import TrendReq
         pytrends = TrendReq(hl="ja-JP", geo="JP")
         df = pytrends.trending_searches(pn="japan")
         topics = df[0].tolist()[:15]
-        return "Googleトレンド（日本）：" + "、".join(topics)
+        return topics, "、".join(topics)
     except Exception:
-        return ""
+        return [], ""
 
 
 def collect_industry_news(client: anthropic.Anthropic, account: dict) -> str:
-    """web_searchで業界・キーワード関連の最新ニュースを取得する"""
     keywords_en = " ".join(account["keywords"][:4])
     keywords_ja = "、".join(account["keywords"][:6])
     prompt = f"""Search "{keywords_en} Japan news 2026" and summarize in Japanese.
@@ -86,24 +102,37 @@ Output a concise bullet-point list in Japanese. Focus on things timely and relev
     return "".join(block.text for block in response.content if hasattr(block, "text"))
 
 
-def collect_trends(client: anthropic.Anthropic, account: dict) -> str:
-    """XトレンドとGoogleトレンドとバズ投稿と業界ニュースをまとめて返す"""
-    sections = []
+def collect_trends(client: anthropic.Anthropic, account: dict) -> dict:
+    """
+    Returns:
+        content: Claudeに渡す全文
+        sources: Slackに表示する参考情報の箇条書き
+    """
+    content_sections = []
+    source_lines = []
 
-    x_raw = get_x_trends()
+    x_raw, x_names = get_x_trends()
     if x_raw:
-        sections.append(f"【Xリアルタイムトレンド】\n{x_raw[:1500]}")
+        content_sections.append(f"【Xリアルタイムトレンド】\n{x_raw[:1500]}")
+        if x_names:
+            source_lines.append(f"• Xトレンド：{' / '.join(x_names[:8])}")
 
-    google = get_google_trends()
-    if google:
-        sections.append(f"【{google}】")
+    google_list, google_str = get_google_trends()
+    if google_str:
+        content_sections.append(f"【Googleトレンド（日本）】\n{google_str}")
+        source_lines.append(f"• Googleトレンド：{' / '.join(google_list[:5])}")
 
-    trending_posts = get_trending_posts(account["keywords"])
-    if trending_posts:
-        sections.append(f"【同ジャンルのバズ投稿（参考）】\n{trending_posts}")
+    buzz_text, buzz_kws = get_trending_posts(account["keywords"])
+    if buzz_text:
+        content_sections.append(f"【同ジャンルのバズ投稿（参考）】\n{buzz_text}")
+        source_lines.append(f"• バズ投稿参照：「{'」「'.join(buzz_kws)}」の人気投稿")
 
     industry = collect_industry_news(client, account)
     if industry:
-        sections.append(f"【業界・キーワード関連ニュース】\n{industry}")
+        content_sections.append(f"【業界・キーワード関連ニュース】\n{industry}")
+        source_lines.append("• 業界ニュース：最新情報をweb検索で参照")
 
-    return "\n\n".join(sections) if sections else "（トレンド情報取得できず）"
+    return {
+        "content": "\n\n".join(content_sections) or "（トレンド情報取得できず）",
+        "sources": "\n".join(source_lines) if source_lines else "（情報取得できず）",
+    }

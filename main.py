@@ -11,6 +11,20 @@ from idea_generator import generate_ideas
 from slack_poster import post_to_thread
 
 JST = timezone(timedelta(hours=9))
+DIVIDER = "─" * 24
+
+
+def build_message(account: dict, now: datetime, sources: str, ideas: str) -> str:
+    time_str = now.strftime("%Y/%m/%d %H:%M")
+    return f"""\
+📅 *{account["name"]}さんの投稿ネタ｜{time_str}*
+
+*📊 参考にした情報*
+{sources}
+
+{DIVIDER}
+
+{ideas.strip()}"""
 
 
 def main() -> None:
@@ -23,7 +37,7 @@ def main() -> None:
         print(f"--- {name}さんの処理開始 ---")
 
         print("  トレンド収集中...")
-        trends = collect_trends(anthropic_client, account)
+        trend_data = collect_trends(anthropic_client, account)
 
         print("  過去投稿データ取得中...")
         try:
@@ -33,10 +47,9 @@ def main() -> None:
             past_posts = ""
 
         print("  ネタ生成中...")
-        ideas = generate_ideas(anthropic_client, account, trends, past_posts)
+        ideas = generate_ideas(anthropic_client, account, trend_data["content"], past_posts)
 
-        time_str = now.strftime("%Y/%m/%d %H:%M")
-        message = f"📅 *{time_str} の投稿ネタ — {name}さん*\n\n{ideas.strip()}"
+        message = build_message(account, now, trend_data["sources"], ideas)
         post_to_thread(
             client=slack_client,
             channel_id=CHANNEL_ID,
