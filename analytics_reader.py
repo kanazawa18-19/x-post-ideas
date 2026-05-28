@@ -1,3 +1,5 @@
+import json
+import re
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -11,8 +13,22 @@ def _parse_int(s: str) -> int:
         return 0
 
 
+def _load_creds(credentials_path: str) -> Credentials:
+    """credentials.jsonを読み込む。private_keyに混入した実改行コードを自動修正する。"""
+    text = open(credentials_path).read()
+    try:
+        info = json.loads(text)
+    except json.JSONDecodeError:
+        # private_key内の実際の改行文字をJSONエスケープに変換して再試行
+        def fix_pk(m: re.Match) -> str:
+            return m.group(1) + m.group(2).replace("\r\n", "\\n").replace("\r", "\\n").replace("\n", "\\n") + '"'
+        fixed = re.sub(r'("private_key"\s*:\s*")(.*?)(?<!\\)"', fix_pk, text, flags=re.DOTALL)
+        info = json.loads(fixed)
+    return Credentials.from_service_account_info(info, scopes=SCOPES)
+
+
 def get_top_posts(spreadsheet_id: str, sheet_name: str, credentials_path: str, top_n: int = 8) -> str:
-    creds = Credentials.from_service_account_file(credentials_path, scopes=SCOPES)
+    creds = _load_creds(credentials_path)
     gc = gspread.authorize(creds)
     sheet = gc.open_by_key(spreadsheet_id).worksheet(sheet_name)
 
