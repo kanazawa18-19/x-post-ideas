@@ -144,6 +144,26 @@ def collect_x_calendar(client: anthropic.Anthropic, account: dict) -> str:
     return "".join(block.text for block in response.content if hasattr(block, "text"))
 
 
+def collect_x_algorithm(client: anthropic.Anthropic) -> str:
+    """Xの最新アルゴリズムの傾向を取得する"""
+    prompt = """Search "X Twitter algorithm 2025 2026 how to grow reach engagement" and summarize in Japanese.
+Find the latest information on:
+- What types of posts X algorithm currently favors
+- Best practices for reach and follower growth
+- What to avoid (shadowban, reduced reach)
+- Any recent algorithm changes
+
+Output a concise bullet-point list in Japanese."""
+
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=500,
+        tools=[{"type": "web_search_20250305", "name": "web_search"}],
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return "".join(block.text for block in response.content if hasattr(block, "text"))
+
+
 def collect_trends(client: anthropic.Anthropic, account: dict) -> dict:
     """
     Returns:
@@ -183,6 +203,11 @@ def collect_trends(client: anthropic.Anthropic, account: dict) -> dict:
     if calendar:
         content_sections.append(f"【Xカレンダー（今日の記念日・季節ネタ）】\n{calendar}")
         source_lines.append("• Xカレンダー：今日の記念日・業界イベント・季節ネタを参照")
+
+    algorithm = collect_x_algorithm(client)
+    if algorithm:
+        content_sections.append(f"【Xの最新アルゴリズム傾向】\n{algorithm}")
+        source_lines.append("• Xアルゴリズム：最新の拡散・リーチ傾向を参照")
 
     return {
         "content": "\n\n".join(content_sections) or "（トレンド情報取得できず）",
