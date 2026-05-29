@@ -1,0 +1,30 @@
+name: Watchdog - X Post Ideas
+
+on:
+  schedule:
+    - cron: '45 22 * * *'   # 7:45 JST  - 38min after main
+    - cron: '45 3 * * *'    # 12:45 JST - 38min after main
+    - cron: '45 9 * * *'    # 18:45 JST - 38min after main
+    - cron: '45 13 * * *'   # 22:45 JST - 38min after main
+
+permissions:
+  actions: write
+
+jobs:
+  check-and-retry:
+    runs-on: ubuntu-latest
+    steps:
+      - name: メイン実行チェック & 再トリガー
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CUTOFF=$(date -u -d '60 minutes ago' '+%Y-%m-%dT%H:%M:%SZ')
+          RECENT_COUNT=$(gh api "repos/${{ github.repository }}/actions/workflows/x-post-ideas.yml/runs?per_page=5" \
+            --jq "[.workflow_runs[] | select(.created_at > \"$CUTOFF\")] | length")
+
+          if [ "$RECENT_COUNT" -eq "0" ]; then
+            echo "スキップ検知: 直近60分に実行なし。再トリガーします..."
+            gh workflow run x-post-ideas.yml
+          else
+            echo "正常: 直近60分に ${RECENT_COUNT} 件の実行を確認"
+          fi

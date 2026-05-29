@@ -2,10 +2,10 @@ name: X Post Ideas Generator
 
 on:
   schedule:
-    - cron: '0 22 * * *'   # 7:00 JST  (22:00 UTC)
-    - cron: '0 3 * * *'    # 12:00 JST (03:00 UTC)
-    - cron: '0 9 * * *'    # 18:00 JST (09:00 UTC)
-    - cron: '0 13 * * *'   # 22:00 JST (13:00 UTC)
+    - cron: '7 22 * * *'   # 7:07 JST  (22:07 UTC)
+    - cron: '7 3 * * *'    # 12:07 JST (03:07 UTC)
+    - cron: '7 9 * * *'    # 18:07 JST (09:07 UTC)
+    - cron: '7 13 * * *'   # 22:07 JST (13:07 UTC)
   workflow_dispatch:
 
 jobs:
@@ -19,11 +19,30 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: pip-
+
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Cache Playwright Chromium
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ hashFiles('requirements.txt') }}
+
       - name: Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: python -m playwright install chromium --with-deps
+
+      - name: Install Playwright system deps only (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: python -m playwright install-deps chromium
 
       - name: cookies.json を作成
         env:
