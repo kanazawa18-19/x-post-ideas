@@ -60,19 +60,8 @@ jobs:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
         run: python3 -c "import os; open('credentials.json','w').write(os.environ['GOOGLE_CREDENTIALS'])"
 
-      - name: Healthcheck start ping
-        run: curl -fsS --retry 3 "${{ secrets.HEALTHCHECK_URL }}/start" || true
-
       - name: Generate and post ideas
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         run: python main.py
-
-      - name: Healthcheck success ping
-        if: success()
-        run: curl -fsS --retry 3 "${{ secrets.HEALTHCHECK_URL }}" || true
-
-      - name: Healthcheck fail ping
-        if: failure()
-        run: curl -fsS --retry 3 "${{ secrets.HEALTHCHECK_URL }}/fail" || true
