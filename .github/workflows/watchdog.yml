@@ -1,11 +1,7 @@
 name: Watchdog - X Post Ideas
 
 on:
-  schedule:
-    - cron: '45 22 * * *'   # 7:45 JST  - 38min after main
-    - cron: '45 3 * * *'    # 12:45 JST - 38min after main
-    - cron: '45 9 * * *'    # 18:45 JST - 38min after main
-    - cron: '45 13 * * *'   # 22:45 JST - 38min after main
+  workflow_dispatch:  # cron-job.org移行により無効化
 
 permissions:
   actions: write
