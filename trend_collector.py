@@ -122,8 +122,9 @@ def collect_shared_context(client: anthropic.Anthropic) -> str:
 
 def collect_account_context(client: anthropic.Anthropic, account: dict) -> str:
     """アカウントごと：業界ニュース + 前例ノウハウを1回で取得"""
-    keywords_en = " ".join(account["keywords"][:4])
-    keywords_ja = "、".join(account["keywords"][:6])
+    sampled = random.sample(account["keywords"], min(6, len(account["keywords"])))
+    keywords_en = " ".join(sampled[:4])
+    keywords_ja = "、".join(sampled)
     prompt = f"""以下の2点を日本語で調査してください：
 
 1. Search "{keywords_en} Japan news 2026" — 「{keywords_ja}」に関連する直近1週間の最新ニュース・話題を箇条書き5点で
