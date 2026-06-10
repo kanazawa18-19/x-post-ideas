@@ -20,10 +20,36 @@ _PROMPT = """\
 【コンテンツの柱（どれかをテーマに選ぶ）】
 {pillars}
 
-【今日のXトレンド・業界動向】
-{trends}
+━━━━━━━━━━━━━━━━━━━━━━
+■ 最優先：同ジャンルのバズ投稿
+━━━━━━━━━━━━━━━━━━━━━━
+{buzz_posts}
+→ 切り口・構成・問いかけ方を参考に、必ず2〜3案はこれを起点として作ること。内容のコピーは不要、「こういうアングルが刺さる」という発想を借りる。
 
+━━━━━━━━━━━━━━━━━━━━━━
+■ 参考：業界ニュース・ノウハウ
+━━━━━━━━━━━━━━━━━━━━━━
+{industry_news}
+→ タイムリーな話題をネタの入口として活用する。
+
+━━━━━━━━━━━━━━━━━━━━━━
+■ 文体参考：過去の高パフォーマンス投稿
+━━━━━━━━━━━━━━━━━━━━━━
 {past_posts}
+→ 内容ではなく、言い回し・使う言葉・ニュアンス・トーンを真似ること。この人らしい書き方・口癖・テンションを全案に反映する。
+
+━━━━━━━━━━━━━━━━━━━━━━
+■ 補助：Xアルゴリズム・今日の記念日
+━━━━━━━━━━━━━━━━━━━━━━
+{algorithm_tips}
+→ 投稿形式の参考や時事フックとして補助的に使う。
+
+━━━━━━━━━━━━━━━━━━━━━━
+■ 参考程度：Xトレンド・Googleトレンド
+━━━━━━━━━━━━━━━━━━━━━━
+{x_trends}
+{google_trends}
+→ 関連するものがあれば自然に組み込む。無理に使わない。
 
 【今の時間帯】
 {time_context}
@@ -41,7 +67,6 @@ _PROMPT = """\
 - 一人称は「私」
 - 友人に話すようなカジュアルなトーン。ですます調より「〜だよ」「〜だった」「〜と思う」「〜なんだけど」などの口語体
 - 専門用語は使ってOKだが、固くなりすぎない
-- 過去の投稿・同ジャンルのバズ投稿がある場合はその言い回し・トーン・構成を参考にする
 - トレンドや業界動向を自然に組み込む
 
 ポイントの条件：
@@ -60,15 +85,24 @@ Xアルゴリズムに沿った書き方：
 """
 
 
-def generate_ideas(client: anthropic.Anthropic, account: dict, trends: str, past_posts: str) -> str:
+def generate_ideas(
+    client: anthropic.Anthropic,
+    account: dict,
+    trend_data: dict,
+    past_posts: str,
+) -> str:
     hour = datetime.now(JST).hour
     closest = min(_TIME_CONTEXT, key=lambda h: abs(h - hour))
 
     prompt = _PROMPT.format(
         persona=account["persona"],
         pillars="\n".join(f"- {p}" for p in account["pillars"]),
-        trends=trends or "（取得できませんでした）",
-        past_posts=past_posts or "",
+        buzz_posts=trend_data.get("buzz_posts") or "（取得できませんでした）",
+        industry_news=trend_data.get("industry_news") or "（取得できませんでした）",
+        past_posts=past_posts or "（データなし）",
+        algorithm_tips=trend_data.get("algorithm_tips") or "（取得できませんでした）",
+        x_trends=trend_data.get("x_trends") or "（取得できませんでした）",
+        google_trends=trend_data.get("google_trends") or "（取得できませんでした）",
         time_context=_TIME_CONTEXT[closest],
     )
 

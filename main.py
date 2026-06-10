@@ -51,7 +51,7 @@ def main() -> None:
             past_posts = ""
 
         print("  ネタ生成中...")
-        ideas = generate_ideas(anthropic_client, account, trend_data["content"], past_posts)
+        ideas = generate_ideas(anthropic_client, account, trend_data, past_posts)
 
         message = build_message(account, now, trend_data["sources"], ideas)
         post_to_thread(

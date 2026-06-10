@@ -135,43 +135,43 @@ def collect_trends(client: anthropic.Anthropic, account: dict, shared_context: s
     """
     shared_context: 全アカウント共通の情報（アルゴリズム+記念日）。初回のみ取得して使い回す。
     Returns:
-        content: Claudeに渡す全文
+        buzz_posts: 同ジャンルのバズ投稿
+        industry_news: 業界ニュース・前例ノウハウ
+        algorithm_tips: Xアルゴリズム・今日の記念日
+        x_trends: Xリアルタイムトレンド
+        google_trends: Googleトレンド
         sources: Slackに表示する参考情報の箇条書き
     """
-    content_sections = []
     source_lines = []
 
-    # API不使用（Playwright）
     x_raw, x_names = get_x_trends()
-    if x_raw:
-        content_sections.append(f"【Xリアルタイムトレンド】\n{x_raw[:1500]}")
-        if x_names:
-            source_lines.append(f"• Xトレンド：{' / '.join(x_names[:8])}")
+    x_trends = x_raw[:1500] if x_raw else ""
+    if x_names:
+        source_lines.append(f"• Xトレンド：{' / '.join(x_names[:8])}")
 
-    # API不使用（pytrends）
     google_list, google_str = get_google_trends()
+    google_trends = google_str if google_str else ""
     if google_str:
-        content_sections.append(f"【Googleトレンド（日本）】\n{google_str}")
         source_lines.append(f"• Googleトレンド：{' / '.join(google_list[:5])}")
 
-    # API不使用（Playwright）
     buzz_text, buzz_kws = get_trending_posts(account["keywords"])
+    buzz_posts = buzz_text if buzz_text else ""
     if buzz_text:
-        content_sections.append(f"【同ジャンルのバズ投稿（参考）】\n{buzz_text}")
         source_lines.append(f"• バズ投稿参照：「{'」「'.join(buzz_kws)}」の人気投稿")
 
-    # API呼び出し1回目：業界ニュース + 前例ノウハウ（アカウントごと）
-    account_ctx = collect_account_context(client, account)
-    if account_ctx:
-        content_sections.append(f"【業界ニュース・前例・ノウハウ】\n{account_ctx}")
+    industry_news = collect_account_context(client, account)
+    if industry_news:
         source_lines.append("• 業界ニュース・前例ノウハウ：web検索で参照")
 
-    # 共通コンテキスト（アルゴリズム + 記念日）を追加
+    algorithm_tips = shared_context if shared_context else ""
     if shared_context:
-        content_sections.append(f"【Xアルゴリズム・今日の記念日】\n{shared_context}")
         source_lines.append("• Xアルゴリズム・今日の記念日：web検索で参照")
 
     return {
-        "content": "\n\n".join(content_sections) or "（トレンド情報取得できず）",
+        "buzz_posts": buzz_posts,
+        "industry_news": industry_news,
+        "algorithm_tips": algorithm_tips,
+        "x_trends": x_trends,
+        "google_trends": google_trends,
         "sources": "\n".join(source_lines) if source_lines else "（情報取得できず）",
     }
