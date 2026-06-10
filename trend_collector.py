@@ -1,6 +1,7 @@
 import re
 import json
 import time
+import random
 import asyncio
 import anthropic
 from pathlib import Path
@@ -80,7 +81,7 @@ def get_x_trends() -> tuple[str, list[str]]:
 
 def get_trending_posts(keywords: list[str]) -> tuple[str, list[str]]:
     """(生テキスト, 検索したキーワードリスト)を返す"""
-    kws = keywords[:3]
+    kws = random.sample(keywords, min(3, len(keywords)))
     targets = [
         (f"https://x.com/search?q={quote(kw)}&src=typed_query&f=top", kw)
         for kw in kws
