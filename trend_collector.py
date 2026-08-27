@@ -18,7 +18,7 @@ def _web_search(client: anthropic.Anthropic, prompt: str, max_tokens: int = 600)
     for attempt in range(3):
         try:
             response = client.messages.create(
-                model="claude-haiku-4-5-20251001",
+                model="claude-haiku-4-5",
                 max_tokens=max_tokens,
                 tools=[{"type": "web_search_20250305", "name": "web_search"}],
                 messages=[{"role": "user", "content": prompt}],
